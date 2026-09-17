@@ -1,10 +1,6 @@
 import getToken from '~/src/services/entra/index.js'
 import { GET_BUSINESS } from './queries.js'
-import {
-  PARCEL_ID,
-  SHEET_ID,
-  SIMPLE_BUSINESS
-} from '~/src/services/dal/fixtures/business.js'
+import { SIMPLE_BUSINESS } from '~/src/services/dal/fixtures/business.js'
 import { config } from '~/src/config/index.js'
 import { dalBusinessToAgreements } from '~/src/features/agreements/transformers/agreements.transformer.js'
 import { getAgreements } from './index.js'
@@ -56,13 +52,7 @@ describe('getAgreements', () => {
       json: () => Promise.resolve(dalResponse)
     })
 
-    const result = await getAgreements(
-      sbi,
-      PARCEL_ID,
-      SHEET_ID,
-      'dummy',
-      mockLogger
-    )
+    const result = await getAgreements(sbi, 'dummy', mockLogger)
 
     expect(fetch).toHaveBeenCalledWith(
       stubEndpoint,
@@ -78,7 +68,7 @@ describe('getAgreements', () => {
       })
     )
     expect(result).toEqual(
-      dalBusinessToAgreements(dalResponse.data.business, PARCEL_ID, SHEET_ID)
+      dalBusinessToAgreements(dalResponse.data.business)
     )
 
     expect(getToken).toHaveBeenCalled()
@@ -92,7 +82,7 @@ describe('getAgreements', () => {
     })
 
     await expect(
-      getAgreements(sbi, PARCEL_ID, SHEET_ID, 'dummy', mockLogger)
+      getAgreements(sbi, 'dummy', mockLogger)
     ).rejects.toThrow()
   })
 
@@ -103,26 +93,14 @@ describe('getAgreements', () => {
       statusText: 'Not Found',
       json: () => Promise.resolve(response404)
     })
-    const result = await getAgreements(
-      sbi,
-      PARCEL_ID,
-      SHEET_ID,
-      'dummy',
-      mockLogger
-    )
+    const result = await getAgreements(sbi, 'dummy', mockLogger)
 
     expect(result).toEqual([])
   })
 
   it('returns an empty array when feature flag is off', async () => {
     config.set('featureFlags.useDal', false)
-    const result = await getAgreements(
-      sbi,
-      PARCEL_ID,
-      SHEET_ID,
-      'dummy',
-      mockLogger
-    )
+    const result = await getAgreements(sbi, 'dummy', mockLogger)
 
     expect(fetch).not.toBeCalled()
     expect(result).toEqual([])
@@ -134,13 +112,7 @@ describe('getAgreements', () => {
       json: () => Promise.resolve(dalResponse)
     })
 
-    const result = await getAgreements(
-      sbi,
-      PARCEL_ID,
-      SHEET_ID,
-      null,
-      mockLogger
-    )
+    const result = await getAgreements(sbi, null, mockLogger)
 
     expect(fetch).toHaveBeenCalledWith(
       stubEndpoint,
@@ -155,9 +127,7 @@ describe('getAgreements', () => {
         body: JSON.stringify({ query: GET_BUSINESS, variables: { sbi } })
       })
     )
-    expect(result).toEqual(
-      dalBusinessToAgreements(dalResponse.data.business, PARCEL_ID, SHEET_ID)
-    )
+    expect(result).toEqual(dalBusinessToAgreements(dalResponse.data.business))
   })
 
   it('does not use entra auth if switched off', async () => {
@@ -168,7 +138,7 @@ describe('getAgreements', () => {
       json: () => Promise.resolve(dalResponse)
     })
 
-    await getAgreements(sbi, PARCEL_ID, SHEET_ID, 'dummy', mockLogger)
+    await getAgreements(sbi, 'dummy', mockLogger)
 
     expect(fetch).toHaveBeenCalledWith(
       stubEndpoint,

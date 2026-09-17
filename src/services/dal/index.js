@@ -5,19 +5,19 @@ import { dalBusinessToAgreements } from '~/src/features/agreements/transformers/
 import { logInfo } from '~/src/features/common/helpers/logging/log-helpers.js'
 import { statusCodes } from '~/src/features/common/constants/status-codes.js'
 
+function prettyDate(d) {
+  return d.toISOString().split('T')[0]
+}
+
 /**
  * Fetches existing Siti Agri agreements for a business from the DAL
  * @param {string} sbi - Single Business Identifier
- * @param {string} parcelId - The parcel ID to filter results by
- * @param {string} sheetId - The sheet ID to filter results by
  * @param {string|null} defraIdToken - The external user token to use for auth (if null, use s2s auth)
  * @param {Logger} logger - Logger object
- * @returns {Promise<AgreementAction[]>} The existing agreements for the sbi
+ * @returns {Promise<AgreementsByParcel>} The existing agreements for the SBI
  */
 export async function getAgreements(
   sbi,
-  parcelId,
-  sheetId,
   defraIdToken,
   logger
 ) {
@@ -69,23 +69,27 @@ export async function getAgreements(
   }
 
   const body = await response.json()
-  const results = dalBusinessToAgreements(body.data.business, parcelId, sheetId)
+  const results = dalBusinessToAgreements(body.data.business)
 
-  const summary = results.map(
-    (a) =>
-      `${a.actionCode}: ${a.quantity} ${a.unit}, ${a.startDate.toISOString().split('T')[0]}-${a.endDate.toISOString().split('T')[0]}`
+  const summary = Object.entries(results).flatMap(
+    ([parcel, actions]) => {
+      actions.map((a) => {
+        `${parcel}: ${a.actionCode}: ${a.quantity} ${a.unit}, ${prettyDate(a.startDate)}-${prettyDate(a.endDate)}`
+      })
+    }
   )
+  const resultCount = Object.values(results).flat().reduce((acc, actions) => acc + actions.length, 0)
   logInfo(logger, {
     category: 'agreements',
     operation: 'Fetch agreements from DAL',
-    context: { parcelId, sheetId, sbi },
-    message: `Retrieved ${results.length} agreements: [${summary.join(', ')}]`
+    context: { sbi },
+    message: `Retrieved ${resultCount} agreements: [${summary.join(', ')}]`
   })
 
   return results
 }
 
 /**
- * @import { AgreementAction } from '~/src/features/agreements/agreements.d.js'
- * @import {Logger} from '~/src/features/common/logger.d.js'
+ * @import { AgreementsByParcel } from '~/src/features/agreements/agreements.d.js'
+ * @import { Logger } from '~/src/features/common/logger.d.js'
  */
