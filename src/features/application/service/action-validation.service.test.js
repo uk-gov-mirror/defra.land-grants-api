@@ -16,6 +16,7 @@ import {
   getDataLayerQueryAccumulated,
   getDataLayerQueryUnion
 } from '~/src/features/data-layers/queries/getDataLayer.query.js'
+import { getBoundaryIntersection } from '~/src/features/data-layers/queries/getBoundaryIntersection.query.js'
 
 vi.mock(
   '~/src/features/parcel/queries/getMoorlandIntersectPercentage.js',
@@ -81,6 +82,13 @@ vi.mock(
   }
 )
 
+vi.mock(
+  '~/src/features/data-layers/queries/getBoundaryIntersection.query.js',
+  () => ({
+    getBoundaryIntersection: vi.fn()
+  })
+)
+
 const mockGetMoorlandIntersectPercentage = vi.mocked(
   getMoorlandIntersectPercentage
 )
@@ -98,6 +106,7 @@ const mockGetDataLayerQueryAccumulated = vi.mocked(getDataLayerQueryAccumulated)
 const mockGetDataLayerQueryUnion = vi.mocked(getDataLayerQueryUnion)
 const mockGetLandData = vi.mocked(getLandData)
 const mockGetAvailableLength = vi.mocked(getAvailableLength)
+const mockGetBoundaryIntersection = vi.mocked(getBoundaryIntersection)
 
 describe('Action Validation Service', () => {
   const mockLogger = {
@@ -207,6 +216,14 @@ describe('Action Validation Service', () => {
       boundaryLengthMeters: 1000,
       incompatibleLengthMeters: 800
     })
+    mockGetBoundaryIntersection.mockImplementation(
+      (_sheetId, _parcelId, dataLayerTypeId) =>
+        Promise.resolve(
+          dataLayerTypeId === DATA_LAYER_TYPES.sssi
+            ? { intersectingLengthMeters: 300, boundaryLengthMeters: 1000 }
+            : { intersectingLengthMeters: 45, boundaryLengthMeters: 1000 }
+        )
+    )
     mockPlannedActionsTransformer.mockReturnValue([])
     mockExecuteRules.mockReturnValue(mockRuleResult)
     mockActionResultTransformer.mockReturnValue(mockActionResult)
@@ -638,6 +655,100 @@ describe('Action Validation Service', () => {
           availability: 0,
           boundaryLength: null
         })
+      })
+    })
+
+    test('should measure the boundary intersection with each consent layer for meter-based actions', async () => {
+      const meterAction = { code: 'BND1', quantity: 150 }
+      const actionConfigWithBnd1 = [
+        ...mockActionConfig,
+        { code: 'BND1', applicationUnitOfMeasurement: 'm' }
+      ]
+
+      await validateLandAction(
+        meterAction,
+        actionConfigWithBnd1,
+        mockAgreements,
+        mockCompatibilityCheckFn,
+        mockLandAction,
+        mockRequest
+      )
+
+      expect(mockGetBoundaryIntersection).toHaveBeenCalledWith(
+        'SX0679',
+        '9238',
+        DATA_LAYER_TYPES.sssi,
+        mockPostgresDb,
+        mockLogger
+      )
+      expect(mockGetBoundaryIntersection).toHaveBeenCalledWith(
+        'SX0679',
+        '9238',
+        DATA_LAYER_TYPES.historic_features,
+        mockPostgresDb,
+        mockLogger
+      )
+      expect(
+        mockExecuteRules.mock.calls[0][1].landParcel.boundaryIntersections
+      ).toEqual({
+        sssi: { intersectingLengthMeters: 300, boundaryLengthMeters: 1000 },
+        historic_features: {
+          intersectingLengthMeters: 45,
+          boundaryLengthMeters: 1000
+        }
+      })
+    })
+
+    test('should not measure boundary intersections for area-based actions', async () => {
+      await validateLandAction(
+        mockAction,
+        mockActionConfig,
+        mockAgreements,
+        mockCompatibilityCheckFn,
+        mockLandAction,
+        mockRequest
+      )
+
+      expect(mockGetBoundaryIntersection).not.toHaveBeenCalled()
+      expect(mockExecuteRules.mock.calls[0][1]).toMatchObject({
+        landParcel: expect.objectContaining({
+          boundaryIntersections: null
+        })
+      })
+    })
+
+    test('should pass a null boundary intersection for a layer whose query failed', async () => {
+      const meterAction = { code: 'BND1', quantity: 150 }
+      const actionConfigWithBnd1 = [
+        ...mockActionConfig,
+        { code: 'BND1', applicationUnitOfMeasurement: 'm' }
+      ]
+      mockGetBoundaryIntersection.mockImplementation(
+        (_sheetId, _parcelId, dataLayerTypeId) =>
+          Promise.resolve(
+            dataLayerTypeId === DATA_LAYER_TYPES.sssi
+              ? null
+              : { intersectingLengthMeters: 45, boundaryLengthMeters: 1000 }
+          )
+      )
+
+      await validateLandAction(
+        meterAction,
+        actionConfigWithBnd1,
+        mockAgreements,
+        mockCompatibilityCheckFn,
+        mockLandAction,
+        mockRequest
+      )
+
+      expect(
+        mockExecuteRules.mock.calls[0][1].landParcel.boundaryIntersections
+      ).toEqual({
+        sssi: null,
+        historic_features: {
+          intersectingLengthMeters: 45,
+          boundaryLengthMeters: 1000
+        }
       })
     })
 
